@@ -62,6 +62,8 @@ public class SituationTableProcessor implements Processor<String, OpennmsModelPr
 
     @Override
     public void process(String reductionKey, OpennmsModelProtos.Alarm alarm) {
+        LOG.debug("Processing situation with key {}", reductionKey);
+
         if (alarm != null) {
             kvStore.put(reductionKey, alarm);
 
@@ -73,6 +75,8 @@ public class SituationTableProcessor implements Processor<String, OpennmsModelPr
                 return;
             }
 
+            LOG.debug("Key {} was mapped to situation {}", reductionKey, situation);
+
             situationHandlers.forEach(h -> {
                 try {
                     h.onSituation(situation);
@@ -81,6 +85,8 @@ public class SituationTableProcessor implements Processor<String, OpennmsModelPr
                 }
             });
         } else {
+            LOG.debug("Key {} was mapped to a delete", reductionKey);
+            StreamRecorder.INSTANCE.recordSituationDelete(reductionKey);
             OpennmsModelProtos.Alarm deletedSituation = kvStore.delete(reductionKey);
 
             if (deletedSituation == null) {
@@ -89,19 +95,20 @@ public class SituationTableProcessor implements Processor<String, OpennmsModelPr
                 return;
             }
 
+            //noinspection ConstantConditions
+            Optional<String> deletedSituationId = deletedSituation.getLastEvent().getParameterList().stream()
+                    .filter(parm -> parm.getName().equals(SituationToEvent.SITUATION_ID_PARM_NAME))
+                    .map(OpennmsModelProtos.EventParameter::getValue)
+                    .findFirst();
+
+            if (!deletedSituationId.isPresent()) {
+                LOG.warn("Could not find situation Id for situation {}", deletedSituation);
+                return;
+            }
+
             situationHandlers.forEach(h -> {
                 try {
-                    //noinspection ConstantConditions
-                    Optional<String> deletedSituationId = deletedSituation.getLastEvent().getParameterList().stream()
-                            .filter(parm -> parm.getName().equals(SituationToEvent.SITUATION_ID_PARM_NAME))
-                            .map(OpennmsModelProtos.EventParameter::getValue)
-                            .findFirst();
-
-                    if (deletedSituationId.isPresent()) {
-                        h.onSituationDeleted(deletedSituationId.get());
-                    } else {
-                        LOG.warn("Could not find situation Id for situation {}", deletedSituation);
-                    }
+                    h.onSituationDeleted(deletedSituationId.get());
                 } catch (Exception e) {
                     LOG.error("onSituationDeleted() call failed with situation: {} on handler: {}", deletedSituation,
                             h, e);

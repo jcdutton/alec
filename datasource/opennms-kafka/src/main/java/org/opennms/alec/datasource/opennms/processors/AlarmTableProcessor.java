@@ -71,6 +71,7 @@ public class AlarmTableProcessor implements Processor<String, OpennmsModelProtos
                 }
             });
         } else {
+            StreamRecorder.INSTANCE.recordAlarmDelete(reductionKey);
             final OpennmsModelProtos.Alarm prevAlarm = kvStore.delete(reductionKey);
             if (prevAlarm != null) {
                 final Alarm mappedAlarm = OpennmsMapper.toAlarm(prevAlarm);
